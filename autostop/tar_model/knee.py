@@ -5,22 +5,21 @@ The implementation is based on
 [1] Satopaa, Ville, et al. "Finding a" kneedle" in a haystack: Detecting knee points in system behavior." 2011 31st international conference on distributed computing systems workshops. IEEE, 2011.
 [2] Gordon V. Cormack and Maura R. Grossman. 2016. Engineering Quality and Reliability in Technology-Assisted Review. In Proceedings of the 39th International ACM SIGIR Conference on Research and Development in Information Retrieval (Pisa, Italy) (SIGIR ’16). ACM, New York, NY, USA, 75–84.
 """
-import sys
 
-sys.path.append("/home/raquel/Documentos/TCCII/auto-stop-tar/autostop/")
+import sys 
 
+sys.path.append("/home/raquel/Documentos/TCCII/novo/auto-stop-tar-master/")
 import csv
 import math
 import numpy as np
 from operator import itemgetter
 from scipy.stats import norm
 from sklearn.preprocessing import MinMaxScaler
-from tar_framework.assessing import Assessor
-from tar_framework.ranking import Ranker
-from tar_model.utils import *
-from tar_framework.utils import *
-PARENT_DIR ='/home/raquel/Documentos/TCCII/auto-stop-tar'
-
+from autostop.tar_framework.assessing import Assessor
+from autostop.tar_framework.ranking import Ranker
+from autostop.tar_model.utils import *
+from autostop.tar_framework.utils import *
+PARENT_DIR = '/home/raquel/Documentos/TCCII/novo/auto-stop-tar-master'
 def detect_knee(data, window_size=1, s=10):
     """
     Detect the so-called knee in the data.
@@ -142,9 +141,9 @@ def test_detect_knee():
 
 
 def knee_method(data_name, topic_set, topic_id,
-                 qrel_file, doc_id_file, doc_text_file,  # data parameters
-                stopping_beta=100, stopping_percentage=1.0, stopping_recall=0.99,  # autostop parameters
-                rho='9',
+                query_file, qrel_file, doc_id_file, doc_text_file,  # data parameters
+                stopping_beta=100, stopping_percentage=1.0, stopping_recall=None,  # autostop parameters
+                rho='6',
                 random_state=0):
     """
     Implementation of the Knee method.
@@ -160,7 +159,7 @@ def knee_method(data_name, topic_set, topic_id,
     @return:
     """
     np.random.seed(random_state)
-    parou = ''
+
     # model named with its configuration
     model_name = 'knee' + '-'
     model_name += 'sb' + str(stopping_beta) + '-'
@@ -171,7 +170,7 @@ def knee_method(data_name, topic_set, topic_id,
     LOGGER.info('Model configuration: {}.'.format(model_name))
 
     # loading data
-    assessor = Assessor( qrel_file, doc_id_file, doc_text_file)
+    assessor = Assessor(query_file, qrel_file, doc_id_file, doc_text_file)
     complete_dids = assessor.get_complete_dids()
     complete_pseudo_dids = assessor.get_complete_pseudo_dids()
     complete_pseudo_texts = assessor.get_complete_pseudo_texts()
@@ -198,11 +197,6 @@ def knee_method(data_name, topic_set, topic_id,
         csvwriter = csv.writer(f)
         while not stopping:
             t += 1
-            if (t == 100):
-                print("paro no t == 100")
-                parou = 't'
-                stopping = True
-
             LOGGER.info('TAR: iteration={}'.format(t))
             train_dids, train_labels = assessor.get_training_data(temp_doc_num)
             train_features = ranker.get_feature_by_did(train_dids)
@@ -224,7 +218,7 @@ def knee_method(data_name, topic_set, topic_id,
             running_true_r = assessor.get_assessed_rel_num()
             running_true_recall = running_true_r / float(total_true_r)
             ap = calculate_ap(did2label, ranked_dids)
-            print(running_true_recall)
+
             # update parameters
             batch_size += math.ceil(batch_size / 10)
 
@@ -254,28 +248,16 @@ def knee_method(data_name, topic_set, topic_id,
 
                 if current_rho > rho:
                     if sampled_num > stopping_beta:
-                        print("paro no ro")
-                        print('n amostra ',sampled_num)
-                        print('total true', total_true_r)
-                        print('running true', running_true_r)
-                        print('percentage ',sampled_percentage)
-                        print('recall ',running_true_recall)
-                        parou = 'rho'
                         stopping = True
 
             # debug: stop early
             if stopping_recall:
                 if running_true_recall >= stopping_recall:
-                    print("paro no recall")
-                    parou = 'recall'
+                    stopping = True
+            if stopping_percentage:
+                if sampled_num >= int(total_num * stopping_percentage):
                     stopping = True
 
-            csvwriter.writerow(
-                (t, batch_size, total_num, sampled_num, total_true_r, running_true_r, ap, running_true_recall, parou))
-            # if stopping_percentage:
-            #     if sampled_num >= int(total_num * stopping_percentage):
-            #         stopping = True
-    print('batata')
     shown_dids = assessor.get_assessed_dids()
     check_func = assessor.assess_state_check_func()
     tar_run_file = name_tar_run_file(data_name=data_name, model_name=model_name, topic_set=topic_set,
@@ -291,11 +273,11 @@ if __name__ == '__main__':
     # test_detect_knee()
 
     data_name = 'firefox'
-    topic_id = '299'
-    topic_set = 'teste_4000limpo'
-    #query_file = os.path.join(PARENT_DIR, 'data', data_name, 'topics', topic_id)
+    topic_id = '115'
+    topic_set = 'test_semstopwords'
+    query_file = os.path.join(PARENT_DIR, 'data', data_name, 'topics', topic_id)
     qrel_file = os.path.join(PARENT_DIR, 'data', data_name, 'qrels', topic_id)
     doc_id_file = os.path.join(PARENT_DIR, 'data', data_name, 'docids', topic_id)
     doc_text_file = os.path.join(PARENT_DIR, 'data', data_name, 'doctexts', topic_id)
 
-    knee_method(data_name, topic_id, topic_set, qrel_file, doc_id_file, doc_text_file)
+    knee_method(data_name, topic_id, topic_set,query_file, qrel_file, doc_id_file, doc_text_file)
