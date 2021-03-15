@@ -9,6 +9,7 @@ from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
+import numpy as np
 
 from rank_bm25 import BM25Okapi
 from nltk.stem.porter import *
@@ -56,7 +57,7 @@ class Ranker(object):
     """
     Manager the ranking module of the TAR framework.
     """
-    def __init__(self, model_type='lr', min_df=2, C=1.0, random_state=0):
+    def __init__(self, model_type='svm', min_df=2, C=1.0, random_state=0):
         self.model_type = model_type
         self.random_state = random_state
         self.min_df = min_df
@@ -73,20 +74,47 @@ class Ranker(object):
         else:
             raise NotImplementedError
 
-    def set_did_2_feature(self, dids, texts, corpus_texts):
-        tfidf_vectorizer = TfidfVectorizer(lowercase=False, stop_words=None, norm=None, use_idf=True, smooth_idf=False, sublinear_tf=False,decode_error="ignore")
+    def set_did_2_feature(self, dids, texts, corpus_texts, metrics):
+        
+        
+        
+        tfidf_vectorizer = TfidfVectorizer(lowercase=False, stop_words=None, norm=None, use_idf=True, smooth_idf=False, sublinear_tf=False,decode_error="ignore", max_features=4000)
         tfidf_vectorizer.fit(corpus_texts)
 
         features = tfidf_vectorizer.transform(texts)
+
         for did, feature in zip(dids, features):
             self.did2feature[did] = feature
 
+        self.did3feature = metrics    
         logging.info('Ranker.set_feature_dict is done.')
         return
 
     def get_feature_by_did(self, dids):
         features = scipy.sparse.vstack([self.did2feature[did] for did in dids])
         return features
+
+
+    def get_feature_metric_by_did(self, dids):
+        #features_mtc = np.array([])
+        count = 0
+        for did in dids:
+            if did == 'pseudo_did':
+                i = 115
+            else:
+                i = int(did)
+
+            lista = [int(val) for val in self.did3feature[i]]
+            if count == 0:
+                features_mtc = np.array([lista])
+            else:
+                features_mtc = np.append(features_mtc, [lista], axis=0)
+            count +=1
+            #np.vstack([features_mtc, lista])
+            #features_mtc = np.append(features_mtc, [lista], axis=1)
+        
+        #print(features_mtc.shape[0])
+        return features_mtc     
 
     def set_features_by_name(self, name, dids):
         features = scipy.sparse.vstack([self.did2feature[did] for did in dids])
@@ -96,7 +124,20 @@ class Ranker(object):
     def get_features_by_name(self, name):
         return self.name2features[name]
 
-    def train(self, features, labels):
+    def get_metrics_by_name(self, dids):
+        count = 0
+        for did in dids:
+            i = int(did)
+            lista = [int(val) for val in self.did3feature[i]]
+            if count == 0:
+                features_mtc = np.array([lista])
+            else:
+                features_mtc = np.append(features_mtc, [lista], axis=0)
+            count +=1
+        return features_mtc    
+
+    def train(self, features, metrics, labels):
+        metrics = scipy.sparse.csr_matrix(metrics)
         if self.model_type == 'lambdamart':
             # retrain the model at each TAR iteration. Otherwise, the training speed will be slowed drastically.
             model = pyltr.models.LambdaMART(
@@ -111,12 +152,16 @@ class Ranker(object):
                 random_state=self.random_state)
         else:
             model = self.model
-        model.fit(features, labels)
+
+        features_mix = scipy.sparse.hstack([features,metrics]).toarray()    
+        model.fit(features_mix, labels)
         # logging.info('Ranker.train is done.')
         return
 
-    def predict(self, features):
-        probs = self.model.predict_proba(features)
+    def predict(self, features, metrics):
+        metrics = scipy.sparse.csr_matrix(metrics)
+        features_mix = scipy.sparse.hstack([features,metrics]).toarray()
+        probs = self.model.predict_proba(features_mix)
         rel_class_inx = list(self.model.classes_).index(REL)
         scores = probs[:, rel_class_inx]
         return scores

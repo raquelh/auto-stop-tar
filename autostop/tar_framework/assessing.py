@@ -6,10 +6,10 @@ import copy
 import numpy as np
 from collections import defaultdict
 from autostop.tar_framework.utils import *
-
+import csv
 
 class DataLoader(object):
-    def __init__(self, query_file, qrel_file, doc_id_file, doc_text_file):
+    def __init__(self, query_file, qrel_file, doc_id_file, doc_text_file, text_metrics):
         """
         Load data.
         @param query_file: e.g. {"id": 1, "query": , "title": }
@@ -20,6 +20,7 @@ class DataLoader(object):
         self.title = self.read_title(query_file)
         self.did2label = self.read_qrels(qrel_file)
         self.dids = self.read_doc_ids(doc_id_file)
+        self.metricstext = self.read_metrics(text_metrics)
         self.did2text = self.read_doc_texts(doc_text_file)
 
         self.pseudo_did = 'pseudo_did'
@@ -38,6 +39,7 @@ class DataLoader(object):
     def read_metrics(text_metrics):
         
         text_metrics = text_metrics +'.csv'
+        
         mtc = {}
         #foi feita adaptação para receber os dados
         with open(text_metrics, 'r', encoding='utf8') as csvfile:
@@ -52,6 +54,8 @@ class DataLoader(object):
                 mtc[doc_id] = line
         #print(type(dct))
         return mtc        
+
+
     @staticmethod
     def read_qrels(qrel_file):
         dct = {}
@@ -87,7 +91,6 @@ class DataLoader(object):
             doc_id = data[line]['id']
             text = data[line]['code']
             dct[doc_id] = text
-        #print(type(dct))
         return dct
 
     @staticmethod
@@ -121,6 +124,9 @@ class DataLoader(object):
     def get_complete_texts(self):
         return [self.did2text[did] for did in self.dids]
 
+    def get_complete_pseudo_metrics(self):
+        return [self.metricstext[did] for did in self.dids]    
+
     def get_complete_labels(self):
         return [self.did2label[did] for did in self.dids]
 
@@ -138,8 +144,8 @@ class Assessor(DataLoader):
     """
     Manager the assessment module of the TAR framework.
     """
-    def __init__(self,query_file, qrel_file, doc_id_file, doc_text_file):
-        super().__init__(query_file, qrel_file, doc_id_file, doc_text_file)
+    def __init__(self,query_file, qrel_file, doc_id_file, doc_text_file, text_metrics):
+        super().__init__(query_file, qrel_file, doc_id_file, doc_text_file, text_metrics)
 
         self.assessed_dids = []
         self.unassessed_dids = copy.copy(self.did2label)
@@ -220,6 +226,7 @@ if __name__ == '__main__':
     qrel_file = os.path.join(mdir, 'qrels', topic_id)
     doc_id_file = os.path.join(mdir, 'docids', topic_id)
     doc_text_file = os.path.join(mdir, 'doctexts', topic_id)
+    text_metrics = os.path.join(PARENT_DIR, 'data', data_name, 'metrics', topic_id)
 
-    data = DataLoader(query_file, qrel_file, doc_id_file, doc_text_file)
+    data = DataLoader(query_file, qrel_file, doc_id_file, doc_text_file, text_metrics)
     pass

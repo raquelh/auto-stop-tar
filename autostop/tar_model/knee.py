@@ -141,7 +141,7 @@ def test_detect_knee():
 
 
 def knee_method(data_name, topic_set, topic_id,
-                query_file, qrel_file, doc_id_file, doc_text_file,  # data parameters
+                query_file, qrel_file, doc_id_file, doc_text_file, text_metrics,  # data parameters
                 stopping_beta=100, stopping_percentage=1.0, stopping_recall=None,  # autostop parameters
                 rho='6',
                 random_state=0):
@@ -170,17 +170,19 @@ def knee_method(data_name, topic_set, topic_id,
     LOGGER.info('Model configuration: {}.'.format(model_name))
 
     # loading data
-    assessor = Assessor(query_file, qrel_file, doc_id_file, doc_text_file)
+    assessor = Assessor(query_file, qrel_file, doc_id_file, doc_text_file, text_metrics)
     complete_dids = assessor.get_complete_dids()
     complete_pseudo_dids = assessor.get_complete_pseudo_dids()
+ 
     complete_pseudo_texts = assessor.get_complete_pseudo_texts()
+    complete_pseudo_metrics = assessor.get_complete_pseudo_metrics()
     did2label = assessor.get_did2label()
     total_true_r = assessor.get_total_rel_num()
     total_num = assessor.get_total_doc_num()
 
     # preparing document features
     ranker = Ranker()
-    ranker.set_did_2_feature(dids=complete_pseudo_dids, texts=complete_pseudo_texts, corpus_texts=complete_pseudo_texts)
+    ranker.set_did_2_feature(dids=complete_pseudo_dids, texts=complete_pseudo_texts, corpus_texts=complete_pseudo_texts, metrics= complete_pseudo_metrics)
     ranker.set_features_by_name('complete_dids', complete_dids)
 
     # local parameters
@@ -200,10 +202,13 @@ def knee_method(data_name, topic_set, topic_id,
             LOGGER.info('TAR: iteration={}'.format(t))
             train_dids, train_labels = assessor.get_training_data(temp_doc_num)
             train_features = ranker.get_feature_by_did(train_dids)
-            ranker.train(train_features, train_labels)
+            train_features_metrics = ranker.get_feature_metric_by_did(train_dids)
+            ranker.train(train_features, train_features_metrics, train_labels)
 
             test_features = ranker.get_features_by_name('complete_dids')
-            scores = ranker.predict(test_features)
+
+            test_metrics = ranker.get_metrics_by_name(complete_dids)
+            scores = ranker.predict(test_features, test_metrics)
 
             zipped = sorted(zip(complete_dids, scores), key=itemgetter(1), reverse=True)
             ranked_dids, _ = zip(*zipped)
@@ -229,14 +234,15 @@ def knee_method(data_name, topic_set, topic_id,
             # detect knee
             knee_data.append((sampled_num, running_true_r))
             knee_indice = detect_knee(knee_data)  # x: sampled_percentage, y: running_true_r
+            
             if knee_indice is not None:
-
                 knee_index = knee_indice[-1]
                 rank1, r1 = knee_data[knee_index]
                 rank2, r2 = knee_data[-1]
 
                 try:
                     current_rho = float(r1 / rank1) / float((r2 - r1 + 1) / (rank2 - rank1))
+
                 except:
                     print('(rank1, r1) = ({} {}), (rank2, r2) = ({} {})'.format(rank1, r1, rank2, r2))
                     current_rho = 0  # do not stop
@@ -274,10 +280,12 @@ if __name__ == '__main__':
 
     data_name = 'firefox'
     topic_id = '115'
-    topic_set = 'test_semstopwords'
+    topic_set = 'test_4000_metrics'
     query_file = os.path.join(PARENT_DIR, 'data', data_name, 'topics', topic_id)
     qrel_file = os.path.join(PARENT_DIR, 'data', data_name, 'qrels', topic_id)
     doc_id_file = os.path.join(PARENT_DIR, 'data', data_name, 'docids', topic_id)
     doc_text_file = os.path.join(PARENT_DIR, 'data', data_name, 'doctexts', topic_id)
+    text_metrics = os.path.join(PARENT_DIR, 'data', data_name, 'metrics', topic_id)
+    
 
-    knee_method(data_name, topic_id, topic_set,query_file, qrel_file, doc_id_file, doc_text_file)
+    knee_method(data_name, topic_id, topic_set,query_file, qrel_file, doc_id_file, doc_text_file, text_metrics)
